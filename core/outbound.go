@@ -37,6 +37,7 @@ func buildFreedomOutboundWithSendThrough(tag, sendThrough string) (*core.Outboun
 	proxySetting := &conf.FreedomConfig{
 		DomainStrategy: "UseIPv4v6",
 	}
+	var setting json.RawMessage
 	setting, err := json.Marshal(proxySetting)
 	if err != nil {
 		return nil, fmt.Errorf("marshal proxy config error: %s", err)
