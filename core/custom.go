@@ -1,10 +1,13 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
 	panel "github.com/wyx2685/v2node/api/v2board"
 	"github.com/xtls/xray-core/app/dns"
 	"github.com/xtls/xray-core/app/router"
@@ -36,6 +39,40 @@ func hasPublicIPv6() bool {
 func hasOutboundWithTag(list []*core.OutboundHandlerConfig, tag string) bool {
 	for _, o := range list {
 		if o != nil && o.Tag == tag {
+			return true
+		}
+	}
+	return false
+}
+
+// listenIPNeedsSendThrough 为具体本机地址时才为出站设置 sendThrough；全零监听表示不绑定源地址
+func listenIPNeedsSendThrough(listenIP string) bool {
+	s := strings.TrimSpace(listenIP)
+	if s == "" {
+		return false
+	}
+	if s == "0.0.0.0" || s == "::" || s == "[::]" {
+		return false
+	}
+	return true
+}
+
+// outboundTagForListenSendThrough 同一 listen 地址复用同一 outbound，避免重复注册
+func outboundTagForListenSendThrough(listenIP string) string {
+	s := strings.TrimSpace(listenIP)
+	if ip := net.ParseIP(s); ip != nil {
+		return "listen-st-" + ip.String()
+	}
+	h := sha256.Sum256([]byte(s))
+	return "listen-st-" + hex.EncodeToString(h[:8])
+}
+
+func hasDefaultOutRoute(info *panel.NodeInfo) bool {
+	if info == nil || info.Common == nil {
+		return false
+	}
+	for _, route := range info.Common.Routes {
+		if route.Action == "default_out" {
 			return true
 		}
 	}
@@ -78,7 +115,34 @@ func GetCustomConfig(infos []*panel.NodeInfo) (*dns.Config, []*core.OutboundHand
 		DomainStrategy: &domainStrategy,
 	}
 
+	// 面板 listen_ip 为具体地址时：先注册 freedom+sendThrough 出站（路由规则在面板规则之后追加，避免盖住 block 等）
 	for _, info := range infos {
+		if info == nil || info.Common == nil {
+			continue
+		}
+		if hasDefaultOutRoute(info) {
+			continue
+		}
+		lip := strings.TrimSpace(info.Common.ListenIP)
+		if !listenIPNeedsSendThrough(lip) {
+			continue
+		}
+		outTag := outboundTagForListenSendThrough(lip)
+		if hasOutboundWithTag(coreOutboundConfig, outTag) {
+			continue
+		}
+		ob, err := buildFreedomOutboundWithSendThrough(outTag, lip)
+		if err != nil {
+			log.WithError(err).WithField("tag", info.Tag).WithField("listen_ip", lip).Warn("build sendThrough outbound failed, skip this binding")
+			continue
+		}
+		coreOutboundConfig = append(coreOutboundConfig, ob)
+	}
+
+	for _, info := range infos {
+		if info == nil || info.Common == nil {
+			continue
+		}
 		if len(info.Common.Routes) == 0 {
 			continue
 		}
@@ -228,6 +292,32 @@ func GetCustomConfig(infos []*panel.NodeInfo) (*dns.Config, []*core.OutboundHand
 			}
 		}
 	}
+
+	// 在面板路由之后追加：该入站剩余流量走带 sendThrough 的 freedom（出站源 IP 与 listen_ip 一致）
+	for _, info := range infos {
+		if info == nil || info.Common == nil {
+			continue
+		}
+		if hasDefaultOutRoute(info) {
+			continue
+		}
+		lip := strings.TrimSpace(info.Common.ListenIP)
+		if !listenIPNeedsSendThrough(lip) {
+			continue
+		}
+		outTag := outboundTagForListenSendThrough(lip)
+		rule := map[string]interface{}{
+			"inboundTag":  info.Tag,
+			"network":     "tcp,udp",
+			"outboundTag": outTag,
+		}
+		rawRule, err := json.Marshal(rule)
+		if err != nil {
+			continue
+		}
+		coreRouterConfig.RuleList = append(coreRouterConfig.RuleList, rawRule)
+	}
+
 	DnsConfig, err := coreDnsConfig.Build()
 	if err != nil {
 		return nil, nil, nil, err
