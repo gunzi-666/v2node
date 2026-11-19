@@ -47,6 +47,10 @@ type machineRunner struct {
 	core     *core.V2Core
 	cfg      *machine.Config
 	fails    int
+	// started 当前配置已成功启动（未分配节点也算），节点没变化时不重建。
+	started bool
+	// triedUpdate 已尝试过的更新指令，同一指令只尝试一次。
+	triedUpdate int64
 }
 
 func (r *machineRunner) running() bool { return r.core != nil }
@@ -93,13 +97,14 @@ func (r *machineRunner) start(c *conf.Conf) error {
 // apply 按配置重建节点，失败时停止并在下次拉取时强制重试。
 func (r *machineRunner) apply(cfg *machine.Config) {
 	r.stop()
-	r.cfg = cfg
+	r.cfg, r.started = cfg, false
 	if err := r.start(cfg.Conf(r.client.Cred)); err != nil {
 		log.WithField("err", err).Error("启动节点失败，稍后重试")
 		r.stop()
 		r.client.Reset()
 		return
 	}
+	r.started = true
 	if r.running() {
 		log.Infof("已按面板配置启动 %d 个节点", len(cfg.Nodes))
 	}
@@ -127,11 +132,40 @@ func (r *machineRunner) poll() time.Duration {
 		return r.interval()
 	}
 	r.fails = 0
-	if changed {
+	switch {
+	case changed && r.started && r.cfg.SameNodes(cfg):
+		r.cfg = cfg
+	case changed:
 		log.Info("节点机配置已更新，重新加载")
 		r.apply(cfg)
 	}
+	r.update(cfg.Update)
 	return r.interval()
+}
+
+// update 按面板指令更新程序：下载校验替换后停止节点并原地重启，失败时保留当前程序并上报原因。
+func (r *machineRunner) update(u *machine.Update) {
+	if u == nil || u.Version == version || u.ID == r.triedUpdate {
+		return
+	}
+	r.triedUpdate = u.ID
+	log.Infof("面板要求更新到 %s，开始下载", u.Version)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	exe, err := (&machine.Updater{BaseURL: os.Getenv("V2NODE_RELEASE_BASE")}).Install(ctx, u.Version)
+	if err != nil {
+		log.WithField("err", err).Error("更新失败，继续运行当前版本")
+		r.client.Report(u.ID, err)
+		return
+	}
+	log.Infof("已更新到 %s，重启程序", u.Version)
+	r.stop()
+	err = machine.Restart(exe)
+	log.WithField("err", err).Error("重启失败，新版本将在下次启动时生效")
+	r.client.Report(u.ID, err)
+	if r.cfg != nil {
+		r.apply(r.cfg)
+	}
 }
 
 func (r *machineRunner) interval() time.Duration {

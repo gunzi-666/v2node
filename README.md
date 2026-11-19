@@ -31,6 +31,7 @@ wget -N https://raw.githubusercontent.com/gunzi-666/v2node/gvboard/script/instal
 - 接入码 30 分钟内有效、只能使用一次；接入后本机凭据保存在 `/etc/v2node/machine.json`（仅 root 可读），不需要通讯密钥，也不需要编写配置文件。已安装的 v2node 也可以直接执行 `v2node enroll --panel 面板地址 --code 接入码` 后重启。
 - 运行哪些节点、各节点是否开启审计、日志级别都由面板下发，v2node 按面板的拉取间隔获取，变化后自动重新加载。
 - 面板吊销或删除节点机后（连续 3 次被面板拒绝），v2node 停止全部节点，之后继续定期重试；重新接入请在面板生成新的安装命令。
+- 远程更新（`v0.4.9-gvboard.3` 起）：面板「节点机」页面下发版本号后，v2node 从本仓库的 GitHub Release 下载本机架构的安装包，按 `.dgst` 校验 sha256、确认新程序能运行后替换并原地重启；失败时保留原程序并把原因报给面板。只更新程序，不更新 geoip / geosite；支持 Linux 与 FreeBSD。
 - 存在 `/etc/v2node/machine.json` 时忽略 `config.json`；删除该文件并重启即回到配置文件方式。原版 v2board 请继续使用配置文件方式。
 
 ## 审计（Gvboard）

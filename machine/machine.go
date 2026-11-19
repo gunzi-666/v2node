@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,6 +123,13 @@ type Config struct {
 	LogLevel     string       `json:"log_level"`
 	PullInterval int          `json:"pull_interval"`
 	Nodes        []NodeConfig `json:"nodes"`
+	// Update 面板要求更新到的版本，没有时为 nil。
+	Update *Update `json:"update,omitempty"`
+}
+
+// SameNodes 日志级别与节点相同，只有拉取间隔或更新指令变化时不需要重建节点。
+func (c *Config) SameNodes(o *Config) bool {
+	return c != nil && o != nil && c.LogLevel == o.LogLevel && slices.Equal(c.Nodes, o.Nodes)
 }
 
 // Conf 转换为与配置文件等价的 conf.Conf：节点接口地址为面板、密钥为本机凭据。
@@ -145,14 +154,31 @@ type Client struct {
 	Version string
 	etag    string
 	last    *Config
+	// 待上报的更新失败原因，面板收到后清除。
+	reportID  int64
+	reportErr string
 }
 
 // Reset 下次拉取时不带 ETag，强制返回完整配置。
 func (c *Client) Reset() { c.etag = "" }
 
+// Report 下次拉取配置时向面板上报更新失败的原因。
+func (c *Client) Report(id int64, err error) {
+	msg := []rune(err.Error())
+	if len(msg) > 200 {
+		msg = msg[:200]
+	}
+	c.reportID, c.reportErr = id, string(msg)
+}
+
 // Fetch 拉取配置。changed 为 false 表示与上次相同；面板返回 404 时返回 ErrRevoked。
 func (c *Client) Fetch(ctx context.Context) (cfg *Config, changed bool, err error) {
-	u := c.Cred.Panel + "/api/v2/server/machine/config?version=" + url.QueryEscape(c.Version)
+	q := url.Values{"version": {c.Version}}
+	if c.reportID != 0 {
+		q.Set("update_id", strconv.FormatInt(c.reportID, 10))
+		q.Set("update_error", c.reportErr)
+	}
+	u := c.Cred.Panel + "/api/v2/server/machine/config?" + q.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, false, err
@@ -167,6 +193,9 @@ func (c *Client) Fetch(ctx context.Context) (cfg *Config, changed bool, err erro
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotModified {
+		c.reportID, c.reportErr = 0, ""
+	}
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotModified:
