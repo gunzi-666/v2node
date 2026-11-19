@@ -20,6 +20,19 @@ wget -N https://raw.githubusercontent.com/gunzi-666/v2node/gvboard/script/instal
 
 Gvboard 版从 `gvboard` 分支发布，版本号带 `-gvboard` 后缀（如 `v0.4.9-gvboard.1`），以预发布版本发布，不会成为常规版本的“最新版”。安装、`v2node update` 只会安装 Gvboard 版；指定版本时请写完整版本号。
 
+## 节点机模式（Gvboard）
+
+Gvboard 面板在系统配置“节点”中开启“节点机一次性接入”后，在“服务器 → 节点机”添加节点机，复制面板生成的命令在服务器上以 root 执行即可：
+
+```
+wget -N https://raw.githubusercontent.com/gunzi-666/v2node/gvboard/script/install.sh && bash install.sh --panel https://panel.example.com --code 面板生成的接入码
+```
+
+- 接入码 30 分钟内有效、只能使用一次；接入后本机凭据保存在 `/etc/v2node/machine.json`（仅 root 可读），不需要通讯密钥，也不需要编写配置文件。已安装的 v2node 也可以直接执行 `v2node enroll --panel 面板地址 --code 接入码` 后重启。
+- 运行哪些节点、各节点是否开启审计、日志级别都由面板下发，v2node 按面板的拉取间隔获取，变化后自动重新加载。
+- 面板吊销或删除节点机后（连续 3 次被面板拒绝），v2node 停止全部节点，之后继续定期重试；重新接入请在面板生成新的安装命令。
+- 存在 `/etc/v2node/machine.json` 时忽略 `config.json`；删除该文件并重启即回到配置文件方式。原版 v2board 请继续使用配置文件方式。
+
 ## 审计（Gvboard）
 
 搭配 [Gvboard](https://github.com/gunzi-666/gvboard) 面板时，可以在节点配置中开启审计：

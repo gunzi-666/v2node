@@ -14,12 +14,14 @@ import (
 	"github.com/wyx2685/v2node/conf"
 	"github.com/wyx2685/v2node/core"
 	"github.com/wyx2685/v2node/limiter"
+	"github.com/wyx2685/v2node/machine"
 	"github.com/wyx2685/v2node/node"
 )
 
 var (
-	config string
-	watch  bool
+	config      string
+	watch       bool
+	machineFile string
 )
 
 var serverCommand = cobra.Command{
@@ -36,18 +38,25 @@ func init() {
 	serverCommand.PersistentFlags().
 		BoolVarP(&watch, "watch", "w",
 			true, "watch file path change")
+	serverCommand.PersistentFlags().
+		StringVar(&machineFile, "machine", machine.DefaultPath,
+			"节点机凭据文件，存在时进入节点机模式（配置由 Gvboard 面板下发，忽略 --config）")
 	command.AddCommand(&serverCommand)
 }
 
 func serverHandle(_ *cobra.Command, _ []string) {
 	showVersion()
-	c := conf.New()
-	err := c.LoadFromPath(config)
 	log.SetFormatter(&log.TextFormatter{
 		DisableTimestamp: true,
 		DisableQuote:     true,
 		PadLevelText:     false,
 	})
+	if _, err := os.Stat(machineFile); err == nil {
+		machineHandle(machineFile)
+		return
+	}
+	c := conf.New()
+	err := c.LoadFromPath(config)
 	if err != nil {
 		log.WithField("err", err).Error("Load config file failed")
 		return
