@@ -28,6 +28,8 @@ type NodeConfig struct {
 	Key        string `mapstructure:"ApiKey"`
 	Timeout    int    `mapstructure:"Timeout"`
 	RetryCount *int   `mapstructure:"RetryCount"`
+	// AuditEnable 开启后从面板（Gvboard）拉取审计规则，按规则记录、阻断或封禁用户的访问并上报，默认关闭。
+	AuditEnable bool `mapstructure:"AuditEnable"`
 }
 
 func New() *Conf {

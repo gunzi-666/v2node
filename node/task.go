@@ -76,6 +76,12 @@ func (c *Controller) nodeInfoMonitor(ctx context.Context) (err error) {
 	}
 	log.WithField("tag", c.tag).Debug("Node info no change")
 
+	if c.auditor != nil {
+		if err := c.syncAuditRules(ctx); err != nil {
+			return err
+		}
+	}
+
 	// get user info
 	newU, err := c.apiClient.GetUserList(ctx)
 	if err != nil {

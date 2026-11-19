@@ -4,10 +4,12 @@ package dispatcher
 
 import (
 	"context"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/wyx2685/v2node/common/audit"
 	"github.com/wyx2685/v2node/common/counter"
 	"github.com/wyx2685/v2node/common/rate"
 	"github.com/wyx2685/v2node/limiter"
@@ -504,9 +506,61 @@ func sniffer(ctx context.Context, cReader *cachedReader, metadataOnly bool, netw
 	return contentResult, contentErr
 }
 
+// auditBlocked 节点开启审计时检查本次访问（嗅探到的域名与原始目标），返回是否应阻断。
+func auditBlocked(ctx context.Context, ob *session.Outbound, destination net.Destination) bool {
+	inb := session.InboundFromContext(ctx)
+	if inb == nil || inb.User == nil || inb.User.Email == "" {
+		return false
+	}
+	a := audit.Get(inb.Tag)
+	if a == nil {
+		return false
+	}
+	l, err := limiter.GetLimiter(inb.Tag)
+	if err != nil {
+		return false
+	}
+	v, ok := l.UserLimitInfo.Load(inb.User.Email)
+	if !ok {
+		return false
+	}
+	src := ""
+	if inb.Source.Address != nil {
+		src = inb.Source.Address.String()
+	}
+	targets := []audit.Target{auditTarget(destination)}
+	if ob.OriginalTarget.IsValid() && ob.OriginalTarget.String() != destination.String() {
+		targets = append(targets, auditTarget(ob.OriginalTarget))
+	}
+	if !a.Check(v.(*limiter.UserLimitInfo).UID, src, destination.Network.SystemString(), targets...) {
+		return false
+	}
+	errors.LogInfo(ctx, "audit blocked ", inb.User.Email, " to ", destination)
+	return true
+}
+
+func auditTarget(d net.Destination) audit.Target {
+	t := audit.Target{Port: uint16(d.Port)}
+	if d.Address == nil {
+		return t
+	}
+	if d.Address.Family().IsDomain() {
+		t.Domain = strings.TrimSuffix(strings.ToLower(d.Address.Domain()), ".")
+	} else if ip, ok := netip.AddrFromSlice(d.Address.IP()); ok {
+		t.IP = ip.Unmap()
+	}
+	return t
+}
+
 func (d *DefaultDispatcher) routedDispatch(ctx context.Context, link *transport.Link, destination net.Destination) {
 	outbounds := session.OutboundsFromContext(ctx)
 	ob := outbounds[len(outbounds)-1]
+
+	if auditBlocked(ctx, ob, destination) {
+		common.Close(link.Writer)
+		common.Interrupt(link.Reader)
+		return
+	}
 
 	var handler outbound.Handler
 

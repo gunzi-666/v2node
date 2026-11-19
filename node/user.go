@@ -71,6 +71,9 @@ func (c *Controller) reportUserTrafficTask(ctx context.Context) (err error) {
 		log.WithField("tag", c.tag).Infof("Total %d online users, %d Reported", len(*onlineDevice), len(result))
 	}
 
+	if c.auditor != nil {
+		return c.reportAudit(ctx)
+	}
 	return nil
 }
 
