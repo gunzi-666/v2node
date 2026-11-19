@@ -267,12 +267,12 @@ install_v2node() {
     cd /usr/local/v2node/
 
     if  [[ -z "$version_param" ]] ; then
-        last_version=$(curl -Ls "https://api.github.com/repos/gunzi-666/v2node/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/gunzi-666/v2node/releases?per_page=50" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | grep -- '-gvboard' | head -n 1)
         if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}检测 v2node 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 v2node 版本安装${plain}"
+            echo -e "${red}检测 v2node gvboard 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 v2node 版本安装${plain}"
             exit 1
         fi
-        echo -e "${green}检测到最新版本：${last_version}，开始安装...${plain}"
+        echo -e "${green}检测到最新 gvboard 版本：${last_version}，开始安装...${plain}"
         url="https://github.com/gunzi-666/v2node/releases/download/${last_version}/v2node-linux-${arch}.zip"
         curl -sL "$url" | pv -s 30M -W -N "下载进度" > /usr/local/v2node/v2node-linux.zip
         if [[ $? -ne 0 ]]; then
@@ -375,7 +375,7 @@ EOF
     fi
 
 
-    curl -o /usr/bin/v2node -Ls https://raw.githubusercontent.com/gunzi-666/v2node/main/script/v2node.sh
+    curl -o /usr/bin/v2node -Ls https://raw.githubusercontent.com/gunzi-666/v2node/gvboard/script/v2node.sh
     chmod +x /usr/bin/v2node
 
     cd $cur_dir

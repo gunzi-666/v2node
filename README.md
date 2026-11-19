@@ -12,6 +12,14 @@ A v2board backend base on moddified xray-core.
 wget -N https://raw.githubusercontent.com/gunzi-666/v2node/main/script/install.sh && bash install.sh
 ```
 
+### 一键安装（Gvboard 版，含审计）
+
+```
+wget -N https://raw.githubusercontent.com/gunzi-666/v2node/gvboard/script/install.sh && bash install.sh
+```
+
+Gvboard 版从 `gvboard` 分支发布，版本号带 `-gvboard` 后缀（如 `v0.4.9-gvboard.1`），以预发布版本发布，不会成为常规版本的“最新版”。安装、`v2node update` 只会安装 Gvboard 版；指定版本时请写完整版本号。
+
 ## 审计（Gvboard）
 
 搭配 [Gvboard](https://github.com/gunzi-666/gvboard) 面板时，可以在节点配置中开启审计：
