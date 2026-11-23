@@ -30,6 +30,9 @@ type NodeConfig struct {
 	RetryCount *int   `mapstructure:"RetryCount"`
 	// AuditEnable 开启后从面板（Gvboard）拉取审计规则，按规则记录、阻断或封禁用户的访问并上报，默认关闭。
 	AuditEnable bool `mapstructure:"AuditEnable"`
+	// CertDir 面板未指定证书路径时证书文件的保存目录，为空时为 /etc/v2node/。
+	// 节点机模式下每个面板各用一个目录，避免不同面板同协议同 ID 的节点共用证书文件。
+	CertDir string `mapstructure:"CertDir"`
 }
 
 func New() *Conf {

@@ -358,13 +358,11 @@ EOF
     fi
 
     if [[ -n "$PANEL_ARG" ]]; then
-        # 节点机模式：用接入码换取本机凭据（/etc/v2node/machine.json），节点配置由面板下发
+        # 节点机模式：用接入码换取本机凭据（/etc/v2node/machines/，每个面板一份），节点配置由面板下发；
+        # 同一面板替换原凭据，其它面板的凭据保留，/etc/v2node/config.json 中的节点同时运行
         if ! /usr/local/v2node/v2node enroll --panel "$PANEL_ARG" --code "$CODE_ARG"; then
             echo -e "${red}接入面板失败，请在面板重新生成安装命令后再试${plain}"
             exit 1
-        fi
-        if [[ ! -f /etc/v2node/config.json ]]; then
-            cp config.json /etc/v2node/
         fi
         if [[ x"${release}" == x"alpine" ]]; then
             service v2node restart
@@ -374,7 +372,7 @@ EOF
         sleep 2
         check_status
         if [[ $? == 0 ]]; then
-            echo -e "${green}v2node 已以节点机模式启动，节点配置由面板下发${plain}"
+            echo -e "${green}v2node 已以节点机模式启动，节点配置由面板下发（已接入的其它面板保持不变，v2node unenroll 可查看或移除）${plain}"
         else
             echo -e "${red}v2node 可能启动失败，请使用 v2node log 查看日志信息${plain}"
         fi

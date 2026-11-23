@@ -19,6 +19,7 @@ type Client struct {
 	APIHost          string
 	Token            string
 	NodeId           int
+	CertDir          string
 	nodeEtag         string
 	userEtag         string
 	auditEtag        string
@@ -60,6 +61,7 @@ func New(c *conf.NodeConfig) (*Client, error) {
 		Token:    c.Key,
 		APIHost:  c.APIHost,
 		NodeId:   c.NodeID,
+		CertDir:  c.CertDir,
 		UserList: &UserListBody{},
 		AliveMap: &AliveMap{},
 	}, nil

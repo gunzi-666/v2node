@@ -22,6 +22,7 @@ var (
 	config      string
 	watch       bool
 	machineFile string
+	machineDir  string
 )
 
 var serverCommand = cobra.Command{
@@ -40,7 +41,10 @@ func init() {
 			true, "watch file path change")
 	serverCommand.PersistentFlags().
 		StringVar(&machineFile, "machine", machine.DefaultPath,
-			"节点机凭据文件，存在时进入节点机模式（配置由 Gvboard 面板下发，忽略 --config）")
+			"旧版节点机凭据文件（仍然读取，下次接入时移入 --machines 目录）")
+	serverCommand.PersistentFlags().
+		StringVar(&machineDir, "machines", machine.DefaultDir,
+			"节点机凭据目录（每个面板一个文件），有凭据时进入节点机模式，--config 中的节点同时运行")
 	command.AddCommand(&serverCommand)
 }
 
@@ -51,8 +55,12 @@ func serverHandle(_ *cobra.Command, _ []string) {
 		DisableQuote:     true,
 		PadLevelText:     false,
 	})
-	if _, err := os.Stat(machineFile); err == nil {
-		machineHandle(machineFile)
+	creds, errs := machine.LoadAll(machineDir, machineFile)
+	for _, err := range errs {
+		log.WithField("err", err).Error("读取节点机凭据失败")
+	}
+	if len(creds) > 0 {
+		machineHandle(creds, config, watch)
 		return
 	}
 	c := conf.New()

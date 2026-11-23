@@ -20,7 +20,7 @@ import (
 	"github.com/wyx2685/v2node/conf"
 )
 
-// DefaultPath 凭据文件默认位置，存在时 v2node server 进入节点机模式。
+// DefaultPath 旧版（只能接入一个面板）的凭据文件，仍然读取，下次接入时移入 DefaultDir。
 const DefaultPath = "/etc/v2node/machine.json"
 
 // ErrRevoked 面板返回 404：凭据已吊销、节点机已删除或面板关闭了节点机。
@@ -31,6 +31,8 @@ type Credential struct {
 	Panel     string `json:"panel"`
 	MachineID int64  `json:"machine_id"`
 	Token     string `json:"token"`
+	// EnrolledAt 接入时间（Unix 秒），多个面板按接入先后排列；旧版凭据没有该字段。
+	EnrolledAt int64 `json:"enrolled_at,omitempty"`
 }
 
 // Load 读取凭据文件。
@@ -109,7 +111,7 @@ func Enroll(ctx context.Context, panel, code, hostname, version string) (*Creden
 	if err := json.Unmarshal(b, &out); err != nil || out.Token == "" {
 		return nil, fmt.Errorf("面板返回内容无法识别: %s", strings.TrimSpace(string(b)))
 	}
-	return &Credential{Panel: panel, MachineID: out.MachineID, Token: out.Token}, nil
+	return &Credential{Panel: panel, MachineID: out.MachineID, Token: out.Token, EnrolledAt: time.Now().Unix()}, nil
 }
 
 // NodeConfig 面板下发的单个节点。
@@ -132,7 +134,7 @@ func (c *Config) SameNodes(o *Config) bool {
 	return c != nil && o != nil && c.LogLevel == o.LogLevel && slices.Equal(c.Nodes, o.Nodes)
 }
 
-// Conf 转换为与配置文件等价的 conf.Conf：节点接口地址为面板、密钥为本机凭据。
+// Conf 转换为与配置文件等价的 conf.Conf：节点接口地址为面板、密钥为本机凭据，证书放在该面板自己的目录。
 func (c *Config) Conf(cred *Credential) *conf.Conf {
 	out := conf.New()
 	if c.LogLevel != "" {
@@ -142,7 +144,7 @@ func (c *Config) Conf(cred *Credential) *conf.Conf {
 	for _, n := range c.Nodes {
 		out.NodeConfigs = append(out.NodeConfigs, conf.NodeConfig{
 			APIHost: cred.Panel, NodeID: n.NodeID, Key: cred.Token, Timeout: conf.DefaultNodeTimeout,
-			RetryCount: &retry, AuditEnable: n.AuditEnable,
+			RetryCount: &retry, AuditEnable: n.AuditEnable, CertDir: CertDir(cred.Panel),
 		})
 	}
 	return out
@@ -157,6 +159,9 @@ type Client struct {
 	// 待上报的更新失败原因，面板收到后清除。
 	reportID  int64
 	reportErr string
+	// 上次成功上报的被跳过节点（JSON），相同时不再上报。
+	nodesSent string
+	nodesOK   bool
 }
 
 // Reset 下次拉取时不带 ETag，强制返回完整配置。
